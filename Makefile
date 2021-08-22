@@ -46,7 +46,7 @@ clean:
 # This is magic for implementing make nyi - basically, the grep command prepends
 # the file and line number, so a line looks like
 #
-# foo.c:3:		NOT_YET_IMPLEMENTED("PROJECT: bar")
+# foo.c:3:		Function_you_need_to_implement("PROJECT: bar")
 #
 # The sed command finds the relevant parts and separates them to be printed by awk
 SED_REGEX := 's/^\(.*:.*:\).*"\(.*\):\(.*\)".*/\1 \2 \3/'
@@ -58,4 +58,4 @@ FILTER := grep -v define | $(PROJ_FILTER) \
 	sed -e $(SED_REGEX) | awk '{printf("%30s %30s() %10s\n", $$1, $$3, $$2)}'
 
 nyi:
-	@find . -name "*.c" | xargs grep -n NOT_YET_IMPLEMENTED | $(FILTER)
+	@find . -name "*.c" | xargs grep -n Function_you_need_to_implement | $(FILTER)
