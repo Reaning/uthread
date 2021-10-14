@@ -17,5 +17,6 @@ void uthread_yield(void);
 void uthread_wake(uthread_t *uthr);
 void uthread_nopreempt_on(void);
 void uthread_nopreempt_off(void);
+void uthread_switch(void);
 
 #endif /* __uthread_sched_h__ */
