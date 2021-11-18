@@ -38,9 +38,9 @@ void uthread_cond_init(uthread_cond_t *cond) {
  * 所作工作：改变当前线程的状态，并将其放入条件变量的等待队列中，切换线程。
  */
 void uthread_cond_wait(uthread_cond_t *cond, uthread_mtx_t *mtx) {
-    uthread_mtx_unlock(mtx);
     ut_curthr->ut_state = UT_WAIT;
     utqueue_enqueue(&cond->uc_waiters,ut_curthr);
+    uthread_mtx_unlock(mtx);
     uthread_switch();
     uthread_mtx_lock(mtx);
 }

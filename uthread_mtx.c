@@ -45,6 +45,7 @@ void uthread_mtx_lock(uthread_mtx_t *mtx) {
     }
 }
 
+
 /*
  * uthread_mtx_trylock
  *
@@ -60,6 +61,7 @@ int uthread_mtx_trylock(uthread_mtx_t *mtx) {
     }
     return 0;
 }
+
 
 /*
  * uthread_mtx_unlock
@@ -85,3 +87,4 @@ void uthread_mtx_unlock(uthread_mtx_t *mtx) {
         return;
     }
 }
+

@@ -45,6 +45,7 @@ void uthread_yield(void) {
     uthread_switch();
 }
 
+
 /*
  * uthread_wake
  *
@@ -57,6 +58,7 @@ void uthread_wake(uthread_t *uthr) {
         utqueue_enqueue(&runq_table[uthr->ut_prio],uthr);
     }
 }
+
 
 /*
  * uthread_setprio
@@ -110,6 +112,7 @@ void uthread_switch() {
         }
     }
 }
+
 
 void uthread_sched_init(void) {
     int i;

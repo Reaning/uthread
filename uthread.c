@@ -33,7 +33,7 @@ uthread_t    *ut_curthr = NULL;             /* 当前正在执行的线程 */
 uthread_t    uthreads[UTH_MAX_UTHREADS];    /* 系统中的所有线程 */
 
 static list_t           reap_queue;         /* 已经运行结束，但资源尚未回收（即死线程）队列 */
-static uthread_id_t     _thr_id;      /* 清理线程，用于回收死线程资源的线程 */
+static uthread_id_t     reaper_thr_id;      /* 清理线程，用于回收死线程资源的线程 */
 
 
 /* ---------- prototypes -- */
@@ -46,9 +46,9 @@ static void uthread_destroy(uthread_t *thread);
 static char *alloc_stack(void);
 static void free_stack(char *stack);
 
-static void _init1(void);
-static void _init2(void);
-static void (long a0, char *a1[]);
+static void reaper_init1(void);
+static void reaper_init2(void);
+static void reaper(long a0, char *a1[]);
 static void make_reapable(uthread_t *uth);
 
 
@@ -70,9 +70,9 @@ void uthread_init(void) {
     /* 以下函数代码不需要修改 */
 
     uthread_sched_init();  //不需要修改，初始化优先级的队列
-    _init1();        //创建互斥锁和条件变量 
+    reaper_init1();        //创建互斥锁和条件变量 
     create_first_thr();    //不需要修改，创建第一个线程，即主线程
-    _init2();        //不需要修改，创建reap线程
+    reaper_init2();        //不需要修改，创建reap线程
 }
 
 
@@ -132,20 +132,19 @@ int uthread_create(uthread_id_t *uidp, uthread_func_t func,
  * 然后调用 uthread_switch() 切换线程。
  */
 void uthread_exit(void *status) {
-    ut_curthr->ut_has_exited = 1;
-    ut_curthr->ut_exit = status;
-    if(ut_curthr->ut_waiter != NULL){
-        if(ut_curthr->ut_state == UT_DETACHABLE){
-            make_reapable(ut_curthr);
-        }else{
-            if(ut_curthr->ut_waiter != NULL){
-                uthread_wake(ut_curthr->ut_waiter);
-            }
+    ut_curthr->ut_exit = status;/* 线程的退出码 */
+    ut_curthr->ut_has_exited = 1;/* 线程已结束 */
+    if(ut_curthr->ut_detach_state == UT_DETACHABLE){
+        make_reapable(ut_curthr);
+        ut_curthr->ut_state = UT_ZOMBIE;
+    }else if (ut_curthr->ut_detach_state == UT_JOINABLE){
+        if (ut_curthr->ut_waiter)
+        {
+            uthread_wake(ut_curthr->ut_waiter);
         }
     }
-    ut_curthr->ut_state = UT_WAIT;
     uthread_switch();
-    // PANIC("returned to a dead thread");
+    PANIC("returned to a dead thread");
 }
 
 /*
@@ -215,16 +214,7 @@ static uthread_id_t uthread_alloc(void) {
  */
 static void uthread_destroy(uthread_t *uth) {
     assert(uth->ut_state == UT_ZOMBIE);
-
     free_stack(uth->ut_stack);
-    // printf("123333\n");
-    // uth->ut_has_exited = 0;
-    // uth->ut_errno = uth->ut_has_exited;
-    // uth->ut_detach_state = UT_DETACHABLE;
-    // uth->ut_exit = NULL;
-    // uth->ut_waiter = NULL;
-    // uth->ut_state = UT_NO_STATE;
-
     uth->ut_state = UT_NO_STATE;
     uth->ut_has_exited = 1;
     uth->ut_waiter = NULL;
@@ -239,16 +229,16 @@ static uthread_mtx_t reap_mtx;
 static uthread_cond_t reap_cond;  
 
 
-static void _init1(void) {   //初始化线程相关
-    list_init(&reap_queue);        //初始化队列，这意味着废弃的线程要入队
-    uthread_mtx_init(&reap_mtx);   //初始化与相关的互斥锁
-    uthread_cond_init(&reap_cond); //初始化与相关的条件变量
+static void reaper_init1(void) {   //初始化reaper线程相关
+    list_init(&reap_queue);        //初始化reaper队列，这意味着废弃的线程要入队
+    uthread_mtx_init(&reap_mtx);   //初始化与reaper相关的互斥锁
+    uthread_cond_init(&reap_cond); //初始化与reaper相关的条件变量
 }
 
-static void _init2(void) {  //启动线程
-    uthread_create(&_thr_id, , 0, NULL, UTH_MAXPRIO);
+static void reaper_init2(void) {  //启动reaper线程
+    uthread_create(&reaper_thr_id, reaper, 0, NULL, UTH_MAXPRIO);
 
-    assert(_thr_id != -1);
+    assert(reaper_thr_id != -1);
 }
 
 #ifdef CLOCKCOUNT
@@ -257,21 +247,19 @@ extern int taken_clock_count;
 #endif
 
 /*
- *  负责遍历死线程列表（reap_queue） 中的所有线程 (均应当处于 ZOMBIE 状态)，
+ * reaper 负责遍历死线程列表（reap_queue） 中的所有线程 (均应当处于 ZOMBIE 状态)，
  * 并清除这些线程.
  *
- * 此外，如果再没有其他线程 (除了  自己)，它将调用 exit() 结束进程.
+ * 此外，如果再没有其他线程 (除了 reaper 自己)，它将调用 exit() 结束进程.
  */
-static void (long a0, char *a1[]) {
+static void reaper(long a0, char *a1[]) {
     uthread_mtx_lock(&reap_mtx);
     while(1)    {
         uthread_t   *thread;
         int         th;
-
         while(list_empty(&reap_queue)) { //循环等待reap_queue不空
             uthread_cond_wait(&reap_cond, &reap_mtx);
         }
-
         /* 迭代reap_queue，逐一取出死线程，将其移除reap_queue，然后销毁   */
         list_iterate_begin(&reap_queue, thread, uthread_t, ut_link) {
             list_remove(&thread->ut_link);
@@ -280,14 +268,13 @@ static void (long a0, char *a1[]) {
         list_iterate_end();    //迭代结束
         
         for (th = 0; th < UTH_MAX_UTHREADS; th++) { /* 检查所有线程，是否还有线程 */
-            if (th != _thr_id &&
+            if (th != reaper_thr_id &&
                 uthreads[th].ut_state != UT_NO_STATE) {
                 break;
             }
         }
-
         if (th == UTH_MAX_UTHREADS) { //没有其他线程了，打印一些信息，进程结束
-            /* we leak the 's stack */
+            /* we leak the reaper's stack */
             fprintf(stderr, "uthreads: no more threads.\n");
             fprintf(stderr, "uthreads: bye!\n");
             exit(0);
@@ -312,7 +299,7 @@ static void create_first_thr(void) {
 }
 
 /*
- * 将指定的线程放入到死线程队列, 并唤醒 .
+ * 将指定的线程放入到死线程队列, 并唤醒 reaper.
  *
  */
 
