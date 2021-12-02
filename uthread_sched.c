@@ -40,9 +40,11 @@ static utqueue_t runq_table[UTH_MAXPRIO + 1]; /* 优先级队列，每个优先�
  * 否则放弃 CPU，转去执行最高优先级的线程.
  */
 void uthread_yield(void) {
-        Function_you_need_to_implement("UTHREADS: uthread_yield");
-    
+    ut_curthr->ut_state = UT_RUNNABLE;
+    utqueue_enqueue(&runq_table[ut_curthr->ut_prio],ut_curthr);
+    uthread_switch();
 }
+
 
 /*
  * uthread_wake
@@ -51,9 +53,12 @@ void uthread_yield(void) {
  * 所作的事情：改变状态，将其放入就绪队列。
  */
 void uthread_wake(uthread_t *uthr) {
-        Function_you_need_to_implement("UTHREADS: uthread_wake");
-    
+    if(uthr->ut_state != UT_RUNNABLE){
+        uthr->ut_state = UT_RUNNABLE;
+        utqueue_enqueue(&runq_table[uthr->ut_prio],uthr);
+    }
 }
+
 
 /*
  * uthread_setprio
@@ -64,9 +69,21 @@ void uthread_wake(uthread_t *uthr) {
  * 成功时返回 1 , 否则返回 0 .
  */
 int uthread_setprio(uthread_id_t id, int prio) {
-        Function_you_need_to_implement("UTHREADS: uthread_setprio");
+    if(id >= UTH_MAX_UTHREADS || prio > UTH_MAXPRIO || prio < 0)return 0;
+    if(uthreads[id].ut_state == UT_ON_CPU || uthreads[id].ut_state == UT_WAIT){
+        uthreads[id].ut_prio = prio;
+        return 1;
+    }else if(uthreads[id].ut_state == UT_TRANSITION){
+        uthreads[id].ut_state = UT_RUNNABLE;
+    }else if(uthreads[id].ut_state == UT_RUNNABLE){
+        if(uthreads[id].ut_prio != prio){
+            if(uthreads[id].ut_prio != -1)utqueue_remove(&runq_table[uthreads[id].ut_prio],&uthreads[id]);
+            utqueue_enqueue(&runq_table[prio],&uthreads[id]);
+            uthreads[id].ut_prio = prio;
+        }
+        return 1;
+    }
     return 0;
-    
 }
 
 /* ----------- private code -- */
@@ -80,11 +97,22 @@ int uthread_setprio(uthread_id_t id, int prio) {
  * 必须要有可执行线程!
  */
 void uthread_switch() {
-        Function_you_need_to_implement("UTHREADS: uthread_switch");
-
-    PANIC("no runnable threads");
-    
+    int i;
+    for(i = UTH_MAXPRIO;i >= 0;i--){
+        // return;
+        if(!utqueue_empty(&runq_table[i])){
+            uthread_t* old = ut_curthr;
+            uthread_t* new = utqueue_dequeue(&runq_table[i]);
+            if(old != new){
+                ut_curthr = new;
+                ut_curthr->ut_state = UT_ON_CPU;
+                uthread_swapcontext(&old->ut_ctx,&ut_curthr->ut_ctx);
+            }
+            return;
+        }
+    }
 }
+
 
 void uthread_sched_init(void) {
     int i;

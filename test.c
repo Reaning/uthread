@@ -27,7 +27,6 @@ uthread_id_t    thr[NUM_THREADS];
 
 static void tester(long a0, char *a1[]) {
     int i = 0;
-
     while (i < 10)    {
 
         printf("第 %i 个线程，第%i 次循环\n", uthread_self(), i++);
@@ -57,7 +56,6 @@ int main(int ac, char **av) {
         void *tmp;
 
         uthread_join(thr[i], &tmp);
-
         sprintf(pbuffer, "joined with thread %i, exited %li.\n", thr[i], (long)tmp);
         ret = write(STDOUT_FILENO, pbuffer, strlen(pbuffer));
         if (ret < 0)         {

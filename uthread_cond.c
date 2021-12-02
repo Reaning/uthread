@@ -28,8 +28,7 @@
  * 初始化指定的条件变量
  */
 void uthread_cond_init(uthread_cond_t *cond) {
-    Function_you_need_to_implement("UTHREADS: uthread_cond_init");
-   
+    utqueue_init(&cond->uc_waiters);
 }
 
 /*
@@ -39,8 +38,11 @@ void uthread_cond_init(uthread_cond_t *cond) {
  * 所作工作：改变当前线程的状态，并将其放入条件变量的等待队列中，切换线程。
  */
 void uthread_cond_wait(uthread_cond_t *cond, uthread_mtx_t *mtx) {
-    Function_you_need_to_implement("UTHREADS: uthread_cond_wait");
-   
+    ut_curthr->ut_state = UT_WAIT;
+    utqueue_enqueue(&cond->uc_waiters,ut_curthr);
+    uthread_mtx_unlock(mtx);
+    uthread_switch();
+    uthread_mtx_lock(mtx);
 }
 
 
@@ -50,8 +52,9 @@ void uthread_cond_wait(uthread_cond_t *cond, uthread_mtx_t *mtx) {
  * 唤醒等待于此条件变量的艘有线程.
  */
 void uthread_cond_broadcast(uthread_cond_t *cond) {
-    Function_you_need_to_implement("UTHREADS: uthread_cond_broadcast");
-    
+    while(!utqueue_empty(&cond->uc_waiters)){
+        uthread_wake(utqueue_dequeue(&cond->uc_waiters));
+    }
 }
 
 /*
@@ -60,6 +63,7 @@ void uthread_cond_broadcast(uthread_cond_t *cond) {
  * 唤醒等待于此条件变量的一个线程.
  */
 void uthread_cond_signal(uthread_cond_t *cond) {
-    Function_you_need_to_implement("UTHREADS: uthread_cond_signal");
-    
+    if(!utqueue_empty(&cond->uc_waiters)){
+        uthread_wake(utqueue_dequeue(&cond->uc_waiters));
+    }
 }
