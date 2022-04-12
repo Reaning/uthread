@@ -24,7 +24,7 @@ typedef enum  {
 } uthread_state_t;
 ```
 
-![IMG_256](img\clip_image002.png)
+![IMG_256](img/clip_image002.png)
 
 ### 使用方法
 
